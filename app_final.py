@@ -5,6 +5,7 @@ import plotly.express as px
 import time
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+from sqlalchemy import create_engine
 
 DB_HOST = "tellmoredb.cd24ogmcy170.us-east-1.rds.amazonaws.com"
 DB_USER = "admin"
@@ -40,6 +41,9 @@ def connect_to_db(db_name):
         user=DB_USER,
         password=DB_PASS,
         db=db_name
+    )
+def connect_to_db2(db_name):
+    return create_engine(f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{db_name}"
     )
 
 
@@ -109,7 +113,7 @@ def create_figures(data, query):
                                       y='Stock_Availability',
                                       size='Stock_Availability',
                                       color='Description',
-                                      title='Bubble Chart: Unit Price vs. Stock Availability',
+                                      title='Unit Price vs. Stock Availability',
                                       labels={'Unit_Price': 'Unit Price', 'Stock_Availability': 'Units in Stock'})
 
         figures = [fig_bar, fig_bubble]
@@ -149,36 +153,6 @@ def create_figures(data, query):
         figures = [pie_fig, bar_fig, line_fig]
         return figures
 
-    if query == "How do we optimize inventory levels and replenishment for high-stockout products to match sales and reduce stockouts?":
-        bar_fig_sales = px.bar(
-            data,
-            x='Total_Sales',
-            y='Description',
-            title='Sum of Total Sales by Description',
-            orientation='h'
-        )
-        bar_fig_sales.update_layout(
-            xaxis_title='Total_Sales',
-            yaxis_title='Description',
-            yaxis={'categoryorder': 'total ascending'}
-        )
-
-        fig_inventory_sales = px.bar(
-            data,
-            x='Description',
-            y='Average_Monthly_Inventory_Level',
-            title='Sum of Average Monthly Inventory Level by Description',
-            barmode='stack',
-            color_discrete_sequence=['#FFFF00']
-        )
-        fig_inventory_sales.update_layout(
-            xaxis_title='Description',
-            xaxis={'categoryorder': 'total ascending'},
-            yaxis_title='Average Monthly Inventory Level'
-        )
-
-        figures = [bar_fig_sales, fig_inventory_sales]
-        return figures
 
     if query == "What was the impact of the promotional discounts offered in May on the weekend vs. weekday sales for all product categories?":
         total_sales_per_category = data.groupby('Category')['total_sales'].sum().reset_index()
@@ -188,7 +162,7 @@ def create_figures(data, query):
             y='Category',
             x='total_sales',
             color='day_type',
-            title='Total Sales for Each Product Category',
+            title='Total Sales by Product Category',
             labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
             barmode='group',
             orientation='h',
@@ -200,7 +174,7 @@ def create_figures(data, query):
             x='Category',
             y='avg_transaction_value',
             color='day_type',
-            title='Average Transaction Value for Each Product Category',
+            title='Average Transaction Value by Product Category',
             labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
             barmode='stack',
             text_auto=True,
@@ -215,7 +189,7 @@ def create_figures(data, query):
             x='Category',
             y='sales_percentage',
             color='day_type',
-            title='Total Sales Percentage for Each Product Category',
+            title='Total Sales Percentage by Product Category',
             labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
             text_auto=True,
             barmode='stack'
@@ -226,7 +200,7 @@ def create_figures(data, query):
             y='Category',
             x='total_transactions',
             color='day_type',
-            title='Total Transactions for Each Product Category',
+            title='Total Transactions by Product Category',
             labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
             barmode='group',
             orientation='h',
@@ -262,23 +236,23 @@ def create_figures(data, query):
 
     # Merchandizing Agentic App
     if query == "What are the top 3 most common reasons for delays in order fulfillment and which product categories are most severely affected by delays?":
-        df = pd.read_sql_query("""SELECT p.Category, o.Delay_Reason, COUNT(o.Transaction_ID) AS Delay_Count
-            FROM retail_panopticon.orderFulfillment o
-            JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
-            JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
-            WHERE o.`On-Time_Fulfillment_Rate` < 100 AND o.Delay_Reason IS NOT NULL
-               AND o.Delay_Reason != ''
-            GROUP BY p.Category, o.Delay_Reason
-            ORDER BY Delay_Count DESC;""",con)
+        # df = pd.read_sql_query("""SELECT p.Category, o.Delay_Reason, COUNT(o.Transaction_ID) AS Delay_Count
+        #     FROM retail_panopticon.orderFulfillment o
+        #     JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
+        #     JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
+        #     WHERE o.`On-Time_Fulfillment_Rate` < 100 AND o.Delay_Reason IS NOT NULL
+        #        AND o.Delay_Reason != ''
+        #     GROUP BY p.Category, o.Delay_Reason
+        #     ORDER BY Delay_Count DESC;""",con)
 
-        top_3_reasons = df.groupby('Delay_Reason')['Delay_Count'].sum().nlargest(3).reset_index()
+        top_3_reasons = data.groupby('Delay_Reason')['Delay_Count'].sum().nlargest(3).reset_index()
 
         # Plotting
         fig_bar_delay = px.bar(top_3_reasons, x='Delay_Reason', y='Delay_Count',
                      title='Top 3 Most Common Reasons for Delays in Order Fulfillment',
                      labels={'Delay_Reason': 'Delay Reason', 'Delay_Count': 'Number of Delays'})
 
-        filtered_df = df[df['Delay_Reason'].isin(top_3_reasons['Delay_Reason'])]
+        filtered_df = data[data['Delay_Reason'].isin(top_3_reasons['Delay_Reason'])]
         # Plotting
         fig_bar_delay_category = px.bar(filtered_df, x='Category', y='Delay_Count', color='Delay_Reason',
                      title='Top 3 Delay Reasons by Product Category',
@@ -287,7 +261,7 @@ def create_figures(data, query):
                      barmode='stack')
 
         # Pivoting the dataframe for heatmap
-        heatmap_df = df.pivot(index='Category', columns='Delay_Reason', values='Delay_Count').fillna(0)
+        heatmap_df = data.pivot(index='Category', columns='Delay_Reason', values='Delay_Count').fillna(0)
         # Plotting
         fig_heatmap = px.imshow(heatmap_df,
                         title='Heatmap of Delay Reasons Across Product Categories',
@@ -298,14 +272,14 @@ def create_figures(data, query):
         return figures
 
     if query == "Which products in this category have the highest rates of replacement requests?":
-        df = pd.read_sql_query("""SELECT p.Product_ID,p.Product_Description,p.Category, ROUND(AVG(r.Replacement_Order_Frequency), 2) AS Avg_Replacement_Frequency
-             FROM retail_panopticon.replacementsAndDefects r 
-            JOIN retail_panopticon.transactions t ON r.Transaction_ID = t.Transaction_ID 
-            JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID 
-            GROUP BY p.Product_ID,p.Product_Description,p.Category 
-            ORDER BY Avg_Replacement_Frequency DESC LIMIT 10;""", con)
+        # df = pd.read_sql_query("""SELECT p.Product_ID,p.Product_Description,p.Category, ROUND(AVG(r.Replacement_Order_Frequency), 2) AS Avg_Replacement_Frequency
+        #      FROM retail_panopticon.replacementsAndDefects r
+        #     JOIN retail_panopticon.transactions t ON r.Transaction_ID = t.Transaction_ID
+        #     JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
+        #     GROUP BY p.Product_ID,p.Product_Description,p.Category
+        #     ORDER BY Avg_Replacement_Frequency DESC LIMIT 10;""", con)
 
-        fig_bar = px.bar(df, x='Product_Description', y='Avg_Replacement_Frequency',
+        fig_bar = px.bar(data, x='Product_Description', y='Avg_Replacement_Frequency',
                      title='Top 10 Products by Average Replacement Frequency',
                      labels={'Product_Description': 'Product',
                              'Avg_Replacement_Frequency': 'Avg Replacement Frequency'},
@@ -314,7 +288,7 @@ def create_figures(data, query):
         fig_bar.update_traces(texttemplate='%{text:.2f}', textposition='outside')
         fig_bar.update_layout(xaxis_tickangle=-45)
 
-        pie_df = df.groupby('Category')['Avg_Replacement_Frequency'].sum().reset_index()
+        pie_df = data.groupby('Category')['Avg_Replacement_Frequency'].sum().reset_index()
 
         # Plotting
         fig_pie = px.pie(pie_df, values='Avg_Replacement_Frequency', names='Category',
@@ -322,7 +296,7 @@ def create_figures(data, query):
                      labels={'Category': 'Product Category',
                              'Avg_Replacement_Frequency': 'Total Replacement Frequency'})
 
-        category_df = df.groupby('Category')['Avg_Replacement_Frequency'].mean().reset_index().sort_values(
+        category_df = data.groupby('Category')['Avg_Replacement_Frequency'].mean().reset_index().sort_values(
             by='Avg_Replacement_Frequency', ascending=False)
 
         # Plotting
@@ -339,13 +313,13 @@ def create_figures(data, query):
         return figures
 
     if query == "How does the order fulfillment rate differ across various product categories?":
-        df = pd.read_sql_query("""SELECT Product_Category,
-            ROUND(AVG(p.Fulfillment_Rate_Category), 2) AS Avg_Fulfillment_Rate
-            FROM retail_panopticon.productAndRegionPerformance p
-            GROUP BY Product_Category
-            ORDER BY Avg_Fulfillment_Rate DESC;""", con)
+        # df = pd.read_sql_query("""SELECT Product_Category,
+        #     ROUND(AVG(p.Fulfillment_Rate_Category), 2) AS Avg_Fulfillment_Rate
+        #     FROM retail_panopticon.productAndRegionPerformance p
+        #     GROUP BY Product_Category
+        #     ORDER BY Avg_Fulfillment_Rate DESC;""", con)
 
-        fig_bar = px.bar(df,
+        fig_bar = px.bar(data,
                      x='Avg_Fulfillment_Rate',
                      y='Product_Category',
                      title="Average Fulfillment Rate by Product Category",
@@ -356,8 +330,8 @@ def create_figures(data, query):
                      height=600)
 
         fig = go.Figure(data=go.Heatmap(
-            z=df['Avg_Fulfillment_Rate'],
-            x=df['Product_Category'],
+            z=data['Avg_Fulfillment_Rate'],
+            x=data['Product_Category'],
             y=['Fulfillment Rate'],
             colorscale='Viridis'))
 
@@ -934,8 +908,9 @@ def merchandising_app(persona, questions_dict):
         if st.session_state['user_input'] and not save_button_pressed:
             if st.session_state['user_input'] in questions_dict.keys() and st.session_state[
                 'user_input'] != "Select a query":
-                conn = connect_to_db(DB_NAME)
-                result = execute_query(questions_dict[st.session_state['user_input']]['sql'], conn)
+                conn = connect_to_db2(DB_NAME)
+                result=pd.read_sql_query(questions_dict[st.session_state['user_input']]['sql'], conn)
+                # result = execute_query(questions_dict[st.session_state['user_input']]['sql'], conn)
                 st.session_state.history.append({
                     "question": st.session_state['user_input'],
                     "nlr": questions_dict[st.session_state['user_input']]['nlr'],
@@ -3655,7 +3630,7 @@ def create_figures2(query, drop):
                  y='Stock_Availability',
                  size='Stock_Availability',
                  color='Description',
-                 title='Bubble Chart: Unit Price vs. Stock Availability',
+                 title='Unit Price vs. Stock Availability',
                  labels={'Unit_Price': 'Unit Price', 'Stock_Availability': 'Units in Stock'})
 
                 figures = [fig_bar, fig_bubble]
@@ -3684,7 +3659,7 @@ def create_figures2(query, drop):
                  y='Stock_Availability',
                  size='Stock_Availability',
                  color='Description',
-                 title='Bubble Chart: Unit Price vs. Stock Availability',
+                 title='Unit Price vs. Stock Availability',
                  labels={'Unit_Price': 'Unit Price', 'Stock_Availability': 'Units in Stock'})
 
                 figures = [fig_bar, fig_bubble]
@@ -3713,381 +3688,381 @@ def create_figures2(query, drop):
                  y='Stock_Availability',
                  size='Stock_Availability',
                  color='Description',
-                 title='Bubble Chart: Unit Price vs. Stock Availability',
+                 title='Unit Price vs. Stock Availability',
                  labels={'Unit_Price': 'Unit Price', 'Stock_Availability': 'Units in Stock'})
 
                 figures = [fig_bar, fig_bubble]
                 return figures
 
-            if query == "Give a daily breakdown UPT for all product categories for each store during May":
-                if drop == "WATER TOWER PLACE":
-                    result = execute_query(
-                        "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE01' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
-                        conn)
+        if query == "Give a daily breakdown UPT for all product categories for each store during May":
+            if drop == "WATER TOWER PLACE":
+                result = execute_query(
+                    "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE01' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
+                    conn)
 
-                    pie_fig = px.pie(
-                        result,
-                        values='UPT',
-                        names='Product_Category',
-                        title='Sum of UPT by Product Category'
-                    )
+                pie_fig = px.pie(
+                    result,
+                    values='UPT',
+                    names='Product_Category',
+                    title='Sum of UPT by Product Category'
+                )
 
-                    filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
-                    line_fig = px.line(
-                        filtered_data,
-                        x='Sale_Date',
-                        y='UPT',
-                        color='Product_Category',
-                        title='Product Category Sales report'
-                    )
-                    line_fig.update_layout(
-                        xaxis_title='Sale_Date',
-                        yaxis_title='Sum of UPT',
-                        legend_title='Product Category'
-                    )
+                filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
+                line_fig = px.line(
+                    filtered_data,
+                    x='Sale_Date',
+                    y='UPT',
+                    color='Product_Category',
+                    title='Product Category Sales report'
+                )
+                line_fig.update_layout(
+                    xaxis_title='Sale_Date',
+                    yaxis_title='Sum of UPT',
+                    legend_title='Product Category'
+                )
 
-                    bar_fig = px.bar(
-                        result,
-                        x='UPT',
-                        y='Store_ID',
-                        orientation='h',
-                        title='Sum of UPT by Store_ID'
-                    )
-                    bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+                bar_fig = px.bar(
+                    result,
+                    x='UPT',
+                    y='Store_ID',
+                    orientation='h',
+                    title='Sum of UPT by Store_ID'
+                )
+                bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
 
-                    figures = [pie_fig, bar_fig, line_fig]
-                    return figures
+                figures = [pie_fig, bar_fig, line_fig]
+                return figures
 
 
 
-                elif drop == "RIVERFRONT PLAZA":
-                    result = execute_query(
-                        "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE28' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
-                        conn)
-                    pie_fig = px.pie(
-                        result,
-                        values='UPT',
-                        names='Product_Category',
-                        title='Sum of UPT by Product Category'
-                    )
+            elif drop == "RIVERFRONT PLAZA":
+                result = execute_query(
+                    "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE28' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
+                    conn)
+                pie_fig = px.pie(
+                    result,
+                    values='UPT',
+                    names='Product_Category',
+                    title='Sum of UPT by Product Category'
+                )
 
-                    filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
-                    line_fig = px.line(
-                        filtered_data,
-                        x='Sale_Date',
-                        y='UPT',
-                        color='Product_Category',
-                        title='Product Category Sales report'
-                    )
-                    line_fig.update_layout(
-                        xaxis_title='Sale_Date',
-                        yaxis_title='Sum of UPT',
-                        legend_title='Product Category'
-                    )
+                filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
+                line_fig = px.line(
+                    filtered_data,
+                    x='Sale_Date',
+                    y='UPT',
+                    color='Product_Category',
+                    title='Product Category Sales report'
+                )
+                line_fig.update_layout(
+                    xaxis_title='Sale_Date',
+                    yaxis_title='Sum of UPT',
+                    legend_title='Product Category'
+                )
 
-                    bar_fig = px.bar(
-                        result,
-                        x='UPT',
-                        y='Store_ID',
-                        orientation='h',
-                        title='Sum of UPT by Store_ID'
-                    )
-                    bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+                bar_fig = px.bar(
+                    result,
+                    x='UPT',
+                    y='Store_ID',
+                    orientation='h',
+                    title='Sum of UPT by Store_ID'
+                )
+                bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
 
-                    figures = [pie_fig, bar_fig, line_fig]
-                    return figures
+                figures = [pie_fig, bar_fig, line_fig]
+                return figures
 
-                elif drop == "WESTFIELD WHEATON":
-                    result = execute_query(
-                        "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE49' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
-                        conn)
-                    pie_fig = px.pie(
-                        result,
-                        values='UPT',
-                        names='Product_Category',
-                        title='Sum of UPT by Product Category'
-                    )
+            elif drop == "WESTFIELD WHEATON":
+                result = execute_query(
+                    "SELECT DATE(t.Date) AS Sale_Date, p.Category AS Product_Category, t.Store_ID, ROUND(SUM(t.Quantity) / COUNT(t.Transaction_ID), 2) AS UPT\nFROM retail_panopticon.transactions t\nJOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID\nWHERE t.Store_ID = 'STORE49' AND  t.Date BETWEEN '2024-05-01' AND '2024-05-31'\nGROUP BY DATE(t.Date), p.Category\nORDER BY DATE(t.Date), p.Category;",
+                    conn)
+                pie_fig = px.pie(
+                    result,
+                    values='UPT',
+                    names='Product_Category',
+                    title='Sum of UPT by Product Category'
+                )
 
-                    filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
-                    line_fig = px.line(
-                        filtered_data,
-                        x='Sale_Date',
-                        y='UPT',
-                        color='Product_Category',
-                        title='Product Category Sales report'
-                    )
-                    line_fig.update_layout(
-                        xaxis_title='Sale_Date',
-                        yaxis_title='Sum of UPT',
-                        legend_title='Product Category'
-                    )
+                filtered_data = result[result['Product_Category'].isin(['Clothing', 'Toys'])]
+                line_fig = px.line(
+                    filtered_data,
+                    x='Sale_Date',
+                    y='UPT',
+                    color='Product_Category',
+                    title='Product Category Sales report'
+                )
+                line_fig.update_layout(
+                    xaxis_title='Sale_Date',
+                    yaxis_title='Sum of UPT',
+                    legend_title='Product Category'
+                )
 
-                    bar_fig = px.bar(
-                        result,
-                        x='UPT',
-                        y='Store_ID',
-                        orientation='h',
-                        title='Sum of UPT by Store_ID'
-                    )
-                    bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+                bar_fig = px.bar(
+                    result,
+                    x='UPT',
+                    y='Store_ID',
+                    orientation='h',
+                    title='Sum of UPT by Store_ID'
+                )
+                bar_fig.update_layout(yaxis={'categoryorder': 'total ascending'})
 
-                    figures = [pie_fig, bar_fig, line_fig]
-                    return figures
+                figures = [pie_fig, bar_fig, line_fig]
+                return figures
 
-            elif query == "What was the impact of the promotional discounts offered in May on the weekend vs. weekday sales for all product categories?":
-                if drop == "WATER TOWER PLACE":
-                    result = execute_query(
-                        "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE01' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
-                        conn)
+        elif query == "What was the impact of the promotional discounts offered in May on the weekend vs. weekday sales for all product categories?":
+            if drop == "WATER TOWER PLACE":
+                result = execute_query(
+                    "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE01' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
+                    conn)
 
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    fig2 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_sales',
-                        color='day_type',
-                        title='Total Sales for Each Product Category',
-                        labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
-                    )
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                fig2 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_sales',
+                    color='day_type',
+                    title='Total Sales by Product Category',
+                    labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
+                )
 
-                    fig3 = px.bar(
-                        df,
-                        x='Category',
-                        y='avg_transaction_value',
-                        color='day_type',
-                        title='Average Transaction Value for Each Category',
-                        labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
-                        barmode='stack',
-                        text_auto=True,
-                        color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
-                    )
+                fig3 = px.bar(
+                    df,
+                    x='Category',
+                    y='avg_transaction_value',
+                    color='day_type',
+                    title='Average Transaction Value by Category',
+                    labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
+                    barmode='stack',
+                    text_auto=True,
+                    color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
+                )
 
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
-                    fig = px.bar(
-                        df,
-                        x='Category',
-                        y='sales_percentage',
-                        color='day_type',
-                        title='Total Sales Percentage for Each Product Category',
-                        labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
-                        text_auto=True,
-                        barmode='stack'
-                    )
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
+                fig = px.bar(
+                    df,
+                    x='Category',
+                    y='sales_percentage',
+                    color='day_type',
+                    title='Total Sales (%) by Product Category',
+                    labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
+                    text_auto=True,
+                    barmode='stack'
+                )
 
-                    fig1 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_transactions',
-                        color='day_type',
-                        title='Total Transactions for Each Product Category',
-                        labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
-                    )
-                    figures = [fig2, fig3, fig, fig1]
-                    return figures
+                fig1 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_transactions',
+                    color='day_type',
+                    title='Total Transactions by Product Category',
+                    labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
+                )
+                figures = [fig2, fig3, fig, fig1]
+                return figures
 
-                elif drop == "RIVERFRONT PLAZA":
-                    result = execute_query(
-                        "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE28' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
-                        conn)
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    fig2 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_sales',
-                        color='day_type',
-                        title='Total Sales for Each Product Category',
-                        labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
-                    )
+            elif drop == "RIVERFRONT PLAZA":
+                result = execute_query(
+                    "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE28' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
+                    conn)
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                fig2 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_sales',
+                    color='day_type',
+                    title='Total Sales by Product Category',
+                    labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
+                )
 
-                    fig3 = px.bar(
-                        df,
-                        x='Category',
-                        y='avg_transaction_value',
-                        color='day_type',
-                        title='Average Transaction Value for Each Category',
-                        labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
-                        barmode='stack',
-                        text_auto=True,
-                        color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
-                    )
+                fig3 = px.bar(
+                    df,
+                    x='Category',
+                    y='avg_transaction_value',
+                    color='day_type',
+                    title='Average Transaction Value by Category',
+                    labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
+                    barmode='stack',
+                    text_auto=True,
+                    color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
+                )
 
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
-                    fig = px.bar(
-                        df,
-                        x='Category',
-                        y='sales_percentage',
-                        color='day_type',
-                        title='Total Sales Percentage for Each Product Category',
-                        labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
-                        text_auto=True,
-                        barmode='stack'
-                    )
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
+                fig = px.bar(
+                    df,
+                    x='Category',
+                    y='sales_percentage',
+                    color='day_type',
+                    title='Total Sales (%) by Product Category',
+                    labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
+                    text_auto=True,
+                    barmode='stack'
+                )
 
-                    fig1 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_transactions',
-                        color='day_type',
-                        title='Total Transactions for Each Product Category',
-                        labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
-                    )
-                    figures = [fig2, fig3, fig, fig1]
-                    return figures
+                fig1 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_transactions',
+                    color='day_type',
+                    title='Total Transactions by Product Category',
+                    labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
+                )
+                figures = [fig2, fig3, fig, fig1]
+                return figures
 
-                elif drop == "WESTFIELD WHEATON":
-                    result = execute_query(
-                        "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE49' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
-                        conn)
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    fig2 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_sales',
-                        color='day_type',
-                        title='Total Sales for Each Product Category',
-                        labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
-                    )
+            elif drop == "WESTFIELD WHEATON":
+                result = execute_query(
+                    "SELECT CASE WHEN DAYOFWEEK(S.date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type, P.Category,SUM(S.Total_Amount) AS total_sales, COUNT(DISTINCT S.Transaction_ID) AS total_transactions, AVG(S.Total_Amount) AS avg_transaction_value FROM transactions S JOIN productInformation P ON S.Product_ID = P.Product_ID WHERE S.Store_ID = 'STORE49' AND DATE_FORMAT(S.date, '%Y-%m') = '2024-05' GROUP BY day_type, P.Category ORDER BY day_type DESC, total_sales DESC;",
+                    conn)
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                fig2 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_sales',
+                    color='day_type',
+                    title='Total Sales by Product Category',
+                    labels={'total_sales': 'Total Sales', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'goldenrod', 'Weekend': 'dodgerblue'}
+                )
 
-                    fig3 = px.bar(
-                        df,
-                        x='Category',
-                        y='avg_transaction_value',
-                        color='day_type',
-                        title='Average Transaction Value for Each Category',
-                        labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
-                        barmode='stack',
-                        text_auto=True,
-                        color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
-                    )
+                fig3 = px.bar(
+                    df,
+                    x='Category',
+                    y='avg_transaction_value',
+                    color='day_type',
+                    title='Average Transaction Value by Category',
+                    labels={'avg_transaction_value': 'Average Transaction Value', 'Category': 'Product Category'},
+                    barmode='stack',
+                    text_auto=True,
+                    color_discrete_map={'Weekday': 'orange', 'Weekend': 'purple'}
+                )
 
-                    total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
-                    df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
-                    df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
-                    fig = px.bar(
-                        df,
-                        x='Category',
-                        y='sales_percentage',
-                        color='day_type',
-                        title='Total Sales Percentage for Each Product Category',
-                        labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
-                        text_auto=True,
-                        barmode='stack'
-                    )
+                total_sales_per_category = result.groupby('Category')['total_sales'].sum().reset_index()
+                df = result.merge(total_sales_per_category, on='Category', suffixes=('', '_total'))
+                df['sales_percentage'] = df['total_sales'] / df['total_sales_total'] * 100
+                fig = px.bar(
+                    df,
+                    x='Category',
+                    y='sales_percentage',
+                    color='day_type',
+                    title='Total Sales (%) by Product Category',
+                    labels={'sales_percentage': 'Percentage of Total Sales', 'Category': 'Product Category'},
+                    text_auto=True,
+                    barmode='stack'
+                )
 
-                    fig1 = px.bar(
-                        df,
-                        y='Category',
-                        x='total_transactions',
-                        color='day_type',
-                        title='Total Transactions for Each Product Category',
-                        labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
-                        barmode='group',
-                        orientation='h',
-                        color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
-                    )
-                    figures = [fig2, fig3, fig, fig1]
-                    return figures
+                fig1 = px.bar(
+                    df,
+                    y='Category',
+                    x='total_transactions',
+                    color='day_type',
+                    title='Total Transactions by Product Category',
+                    labels={'total_transactions': 'Total Transactions', 'Category': 'Product Category'},
+                    barmode='group',
+                    orientation='h',
+                    color_discrete_map={'Weekday': 'mediumseagreen', 'Weekend': 'tomato'}
+                )
+                figures = [fig2, fig3, fig, fig1]
+                return figures
 
-            elif query == "Give the total shipments delivered late and the reason for the delay for each product category":
-                if drop == "WATER TOWER PLACE":
-                    result = execute_query(
-                        "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE01' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
-                        conn)
-                    fig_pie = px.sunburst(
-                        result,
-                        path=['Category', 'Reason_Late_Shipment'],
-                        values='Total_Late_Shipments',
-                        title='Reasons for Late Shipments by Product Category',
-                        color='Reason_Late_Shipment',
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
+        elif query == "Give the total shipments delivered late and the reason for the delay for each product category":
+            if drop == "WATER TOWER PLACE":
+                result = execute_query(
+                    "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE01' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
+                    conn)
+                fig_pie = px.sunburst(
+                    result,
+                    path=['Category', 'Reason_Late_Shipment'],
+                    values='Total_Late_Shipments',
+                    title='Reasons for Late Shipments by Category',
+                    color='Reason_Late_Shipment',
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
 
-                    total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
-                    fig_bar = px.bar(
-                        total_shipments_by_category,
-                        y='Category',
-                        x='Total_Late_Shipments',
-                        title='Total Late Shipments by Product Category',
-                        labels={'Total_Late_Shipments': 'Total Late Shipments'},
-                        color='Category',
-                        color_discrete_sequence=px.colors.qualitative.Pastel
-                    )
-                    figures = [fig_pie, fig_bar]
-                    return figures
+                total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
+                fig_bar = px.bar(
+                    total_shipments_by_category,
+                    y='Category',
+                    x='Total_Late_Shipments',
+                    title='Total Late Shipments by Category',
+                    labels={'Total_Late_Shipments': 'Total Late Shipments'},
+                    color='Category',
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                figures = [fig_pie, fig_bar]
+                return figures
 
-                elif drop == "RIVERFRONT PLAZA":
-                    result = execute_query(
-                        "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE28' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
-                        conn)
-                    fig_pie = px.sunburst(
-                        result,
-                        path=['Category', 'Reason_Late_Shipment'],
-                        values='Total_Late_Shipments',
-                        title='Reasons for Late Shipments by Product Category',
-                        color='Reason_Late_Shipment',
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
+            elif drop == "RIVERFRONT PLAZA":
+                result = execute_query(
+                    "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE28' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
+                    conn)
+                fig_pie = px.sunburst(
+                    result,
+                    path=['Category', 'Reason_Late_Shipment'],
+                    values='Total_Late_Shipments',
+                    title='Reasons for Late Shipments by Category',
+                    color='Reason_Late_Shipment',
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
 
-                    total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
-                    fig_bar = px.bar(
-                        total_shipments_by_category,
-                        y='Category',
-                        x='Total_Late_Shipments',
-                        title='Total Late Shipments by Product Category',
-                        labels={'Total_Late_Shipments': 'Total Late Shipments'},
-                        color='Category',
-                        color_discrete_sequence=px.colors.qualitative.Pastel
-                    )
-                    figures = [fig_pie, fig_bar]
-                    return figures
+                total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
+                fig_bar = px.bar(
+                    total_shipments_by_category,
+                    y='Category',
+                    x='Total_Late_Shipments',
+                    title='Total Late Shipments by Category',
+                    labels={'Total_Late_Shipments': 'Total Late Shipments'},
+                    color='Category',
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                figures = [fig_pie, fig_bar]
+                return figures
 
-                elif drop == "WESTFIELD WHEATON":
-                    result = execute_query(
-                        "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE49' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
-                        conn)
-                    fig_pie = px.sunburst(
-                        result,
-                        path=['Category', 'Reason_Late_Shipment'],
-                        values='Total_Late_Shipments',
-                        title='Reasons for Late Shipments by Product Category',
-                        color='Reason_Late_Shipment',
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
+            elif drop == "WESTFIELD WHEATON":
+                result = execute_query(
+                    "SELECT t.Store_ID, p.Category,s.Reason_Late_Shipment, COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) AS Total_Late_Shipments FROM transactions t JOIN productInformation p ON t.Product_ID = p.Product_ID JOIN shipmentPerformance s ON t.Transaction_ID = s.Transaction_ID WHERE t.Store_ID = 'STORE49' GROUP BY p.Category, s.Reason_Late_Shipment HAVING COUNT(CASE WHEN s.Late_Shipment_Rate > 0 THEN t.Transaction_ID END) > 0 ORDER BY Total_Late_Shipments DESC;",
+                    conn)
+                fig_pie = px.sunburst(
+                    result,
+                    path=['Category', 'Reason_Late_Shipment'],
+                    values='Total_Late_Shipments',
+                    title='Reasons for Late Shipments by Category',
+                    color='Reason_Late_Shipment',
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
 
-                    total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
-                    fig_bar = px.bar(
-                        total_shipments_by_category,
-                        y='Category',
-                        x='Total_Late_Shipments',
-                        title='Total Late Shipments by Product Category',
-                        labels={'Total_Late_Shipments': 'Total Late Shipments'},
-                        color='Category',
-                        color_discrete_sequence=px.colors.qualitative.Pastel
-                    )
-                    figures = [fig_pie, fig_bar]
-                    return figures
+                total_shipments_by_category = result.groupby('Category')['Total_Late_Shipments'].sum().reset_index()
+                fig_bar = px.bar(
+                    total_shipments_by_category,
+                    y='Category',
+                    x='Total_Late_Shipments',
+                    title='Total Late Shipments by Category',
+                    labels={'Total_Late_Shipments': 'Total Late Shipments'},
+                    color='Category',
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                figures = [fig_pie, fig_bar]
+                return figures
             # Merchandizing Agentic App
             # Question 1
             elif query == "What are the top 3 most common reasons for delays in order fulfillment and which product categories are most severely affected by delays?":
@@ -4096,7 +4071,7 @@ def create_figures2(query, drop):
                         FROM retail_panopticon.orderFulfillment o
                         JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
                         JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
-                        WHERE o.`On-Time_Fulfillment_Rate` < 100  AND p.Category='Food' AND o.Delay_Reason IS NOT NULL
+                        WHERE o.`On-Time_Fulfillment_Rate` < 100  AND p.Category='Food'
                            AND o.Delay_Reason != ''
                         GROUP BY p.Category, o.Delay_Reason
                         ORDER BY Delay_Count DESC;""", conn)
@@ -4105,7 +4080,7 @@ def create_figures2(query, drop):
 
                     # Plotting
                     fig_bar_delay = px.bar(top_3_reasons, x='Delay_Reason', y='Delay_Count',
-                                           title='Top 3 Most Common Reasons for Delays in Order Fulfillment',
+                                           title='Top 3 Reasons for Delays in Fulfillment',
                                            labels={'Delay_Reason': 'Delay Reason',
                                                    'Delay_Count': 'Number of Delays'})
 
@@ -4136,7 +4111,7 @@ def create_figures2(query, drop):
                         FROM retail_panopticon.orderFulfillment o
                         JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
                         JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
-                        WHERE o.`On-Time_Fulfillment_Rate` < 100  AND p.Category='Clothing' AND o.Delay_Reason IS NOT NULL
+                        WHERE o.`On-Time_Fulfillment_Rate` < 100  AND p.Category='Clothing'
                            AND o.Delay_Reason != ''
                         GROUP BY p.Category, o.Delay_Reason
                         ORDER BY Delay_Count DESC;""", conn)
@@ -4176,7 +4151,7 @@ def create_figures2(query, drop):
                         FROM retail_panopticon.orderFulfillment o
                         JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
                         JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
-                        WHERE o.`On-Time_Fulfillment_Rate` < 100 AND p.Category='Toys' AND o.Delay_Reason IS NOT NULL
+                        WHERE o.`On-Time_Fulfillment_Rate` < 100 AND p.Category='Toys'
                            AND o.Delay_Reason != ''
                         GROUP BY p.Category, o.Delay_Reason
                         ORDER BY Delay_Count DESC;""", conn)
@@ -4216,7 +4191,7 @@ def create_figures2(query, drop):
                         FROM retail_panopticon.orderFulfillment o
                         JOIN retail_panopticon.transactions t ON o.Transaction_ID = t.Transaction_ID
                         JOIN retail_panopticon.productInformation p ON t.Product_ID = p.Product_ID
-                        WHERE o.`On-Time_Fulfillment_Rate` < 100 AND p.Category='Electronics' AND o.Delay_Reason IS NOT NULL
+                        WHERE o.`On-Time_Fulfillment_Rate` < 100 AND p.Category='Electronics'
                            AND o.Delay_Reason != ''
                         GROUP BY p.Category, o.Delay_Reason
                         ORDER BY Delay_Count DESC;""", conn)
